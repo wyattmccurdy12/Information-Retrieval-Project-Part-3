@@ -16,6 +16,8 @@ class QXRetriever:
     """
 
     MODEL_ID = "meta-llama/Llama-3.2-1B"
+    SYSTEM_PROMPT = "You are a linux researcher with an intimate knowlege of linux systems.\
+        You are an expert at phrasing precise questions and creating specificly worded answers."
 
     def __init__(self):
         """
