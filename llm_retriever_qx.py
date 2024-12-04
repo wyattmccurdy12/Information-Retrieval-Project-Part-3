@@ -2,7 +2,6 @@ import json
 import re
 import pandas as pd
 from tqdm import tqdm
-from nltk.corpus import wordnet
 from transformers import pipeline
 from sentence_transformers import SentenceTransformer, util
 import torch
@@ -42,22 +41,6 @@ class QXRetriever:
         )
         return pipe
 
-    def expand_query(self, query):
-        """
-        Expand the query using synonyms from WordNet.
-
-        Args:
-            query (str): The input query string.
-
-        Returns:
-            str: The expanded query string with synonyms.
-        """
-        expanded_query = set(query.split())
-        for word in query.split():
-            for syn in wordnet.synsets(word):
-                for lemma in syn.lemmas():
-                    expanded_query.add(lemma.name())
-        return ' '.join(expanded_query)
 
     def encode_documents(self, documents):
         """
