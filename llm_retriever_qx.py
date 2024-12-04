@@ -1,19 +1,15 @@
+import argparse
 import json
 import re
 import pandas as pd
 from tqdm import tqdm
+import transformers
 from transformers import pipeline
 from sentence_transformers import SentenceTransformer, util
 import torch
+import os
 
 class QXRetriever:
-    """
-    QXRetriever is a class designed to initialize and use the LLaMA model for text generation,
-    expand queries using synonyms from WordNet, and retrieve documents that match the expanded query.
-
-    Attributes:
-        MODEL_ID (str): The identifier for the LLaMA model to be used.
-    """
 
     MODEL_ID = "meta-llama/Llama-3.2-1B"
 
@@ -41,7 +37,6 @@ class QXRetriever:
         )
         return pipe
 
-
     def encode_documents(self, documents):
         """
         Encode the documents using the bi-encoder and store their embeddings.
@@ -49,26 +44,27 @@ class QXRetriever:
         Args:
             documents (dict): A dictionary where keys are document IDs and values are document texts.
         """
-        for doc_id, text in documents.items():
+        for doc_id, text in tqdm(documents.items(), desc="Encoding documents"):
             self.document_embeddings[doc_id] = self.bi_encoder.encode(text, convert_to_tensor=True)
 
-    def retrieve_documents(self, expanded_query, documents):
+    def retrieve_documents(self, expanded_query, documents, top_k=100):
         """
         Retrieve documents that match the expanded query using bi-encoder.
 
         Args:
             expanded_query (str): The query string with expanded terms.
             documents (dict): A dictionary where keys are document IDs and values are document texts.
+            top_k (int): The number of top documents to retrieve.
 
         Returns:
-            list: A list of dictionaries, each containing 'Id' and 'Text' of documents that match the expanded query.
+            list: A list of dictionaries, each containing 'Id', 'Text', and 'Score' of documents that match the expanded query.
         """
         query_embedding = self.bi_encoder.encode(expanded_query, convert_to_tensor=True)
         results = []
         for doc_id, doc_embedding in self.document_embeddings.items():
             score = util.pytorch_cos_sim(query_embedding, doc_embedding).item()
             results.append({'Id': doc_id, 'Text': documents[doc_id], 'Score': score})
-        results = sorted(results, key=lambda x: x['Score'], reverse=True)
+        results = sorted(results, key=lambda x: x['Score'], reverse=True)[:top_k]
         return results
 
     def gen_with_llama(self, text_input):
@@ -164,3 +160,83 @@ class QXRetriever:
         """
         clean = re.compile('<.*?>')
         return re.sub(clean, '', text)
+    
+
+def main():
+    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('-be', '--bi_encoder', default='sentence-transformers/multi-qa-mpnet-base-dot-v1', help='Bi-encoder model string')
+    parser.add_argument('-o', '--output_dir', default='data/outputs/', help='Output directory for TREC-formatted results')
+    parser.add_argument('--write-expanded', action='store_true', default=True, help='Write expanded queries to a JSON file')
+    args = parser.parse_args()
+
+    # Load data
+    print("Loading queries...")
+    queries = QXRetriever.load_queries('data/inputs/topics_1.json')
+    print("Loading documents...")
+    documents = QXRetriever.load_documents('data/inputs/Answers.json')
+    print("Loading qrels...")
+    qrels = QXRetriever.load_qrels('data/inputs/qrel_1.tsv')
+    
+    # Initialize QXRetriever
+    print("Initializing QXRetriever...")
+    retriever = QXRetriever(bi_encoder_model=args.bi_encoder)
+    
+    # Process and encode documents
+    print("Processing and encoding documents...")
+    processed_documents = {}
+    for doc in tqdm(documents, desc="Processing documents"):
+        doc_id = doc['Id']
+        text = QXRetriever.remove_html_tags(doc['Text'])
+        processed_documents[doc_id] = text
+    
+    # Encode documents
+    retriever.encode_documents(processed_documents)
+    
+    # Process queries
+    print("Processing queries...")
+    processed_queries = []
+    expanded_queries = []
+    expanded_queries_file = os.path.join(args.output_dir, 'expanded_queries.json')
+
+    if not args.write_expanded and os.path.exists(expanded_queries_file):
+        print(f"Loading expanded queries from {expanded_queries_file}...")
+        with open(expanded_queries_file, 'r') as f:
+            expanded_queries = json.load(f)
+        processed_queries = [(query['Id'], query['ExpandedTitle']) for query in expanded_queries]
+    else:
+        for query in tqdm(queries, desc="Processing queries"):
+            query_id = query['Id']
+            title = QXRetriever.remove_html_tags(query['Title'])
+            body = QXRetriever.remove_html_tags(query['Body'])
+            tags = ' '.join(query['Tags'])
+            merged_query = f"{title} {body} {tags}"
+            expanded_query = retriever.expand_query_title({'Title': merged_query})
+            processed_queries.append((query_id, expanded_query['Title']))
+            expanded_queries.append({'Id': query_id, 'ExpandedTitle': expanded_query['Title']})
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
+    output_file = os.path.join(args.output_dir, 'trec_results.txt')
+
+    # Write TREC-formatted results to file
+    with open(output_file, 'w') as f:
+        for query_id, query_text in processed_queries:
+            # Expand the query
+            expanded_query = retriever.expand_query(query_text)
+            print(f"Expanded Query for {query_id}: {expanded_query}")
+            
+            # Retrieve documents
+            print(f"Retrieving documents for query {query_id}...")
+            results = retriever.retrieve_documents(expanded_query, processed_documents)
+            print(f"Retrieved Documents for {query_id}:")
+            for rank, result in enumerate(results, start=1):
+                f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
+    
+    # Write expanded queries to a JSON file if the flag is set
+    if args.write_expanded:
+        with open(expanded_queries_file, 'w') as f:
+            json.dump(expanded_queries, f, indent=4)
+        print(f"Expanded queries written to {expanded_queries_file}")
+
+if __name__ == "__main__":
+    main()
