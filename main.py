@@ -1,11 +1,11 @@
-from llm_retriever_qx import QXRetriever, load_queries, load_documents, load_qrels, remove_html_tags
+from llm_retriever_qx import QXRetriever
 from tqdm import tqdm
 
 def main():
     # Load data
-    queries = load_queries('data/inputs/topics_1.json')
-    documents = load_documents('data/inputs/Answers.json')
-    qrels = load_qrels('data/inputs/qrel_1.tsv')
+    queries = QXRetriever.load_queries('data/inputs/topics_1.json')
+    documents = QXRetriever.load_documents('data/inputs/Answers.json')
+    qrels = QXRetriever.load_qrels('data/inputs/qrel_1.tsv')
     
     # Initialize QXRetriever
     retriever = QXRetriever()
@@ -15,15 +15,15 @@ def main():
     processed_documents = {}
     for doc in tqdm(documents, desc="Processing documents"):
         doc_id = doc['Id']
-        text = remove_html_tags(doc['Text'])
+        text = QXRetriever.remove_html_tags(doc['Text'])
         processed_documents[doc_id] = text
     
     # Process queries
     processed_queries = []
     for query in tqdm(queries, desc="Processing queries"):
         query_id = query['Id']
-        title = remove_html_tags(query['Title'])
-        body = remove_html_tags(query['Body'])
+        title = QXRetriever.remove_html_tags(query['Title'])
+        body = QXRetriever.remove_html_tags(query['Body'])
         tags = ' '.join(query['Tags'])
         merged_query = f"{title} {body} {tags}"
         expanded_query = retriever.expand_query_title({'Title': merged_query})
