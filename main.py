@@ -1,14 +1,19 @@
+import argparse
 from llm_retriever_qx import QXRetriever
 from tqdm import tqdm
 
 def main():
+    parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('-be', '--bi_encoder', default='sentence-transformers/multi-qa-mpnet-base-dot-v1', help='Bi-encoder model string')
+    args = parser.parse_args()
+
     # Load data
     queries = QXRetriever.load_queries('data/inputs/topics_1.json')
     documents = QXRetriever.load_documents('data/inputs/Answers.json')
     qrels = QXRetriever.load_qrels('data/inputs/qrel_1.tsv')
     
     # Initialize QXRetriever
-    retriever = QXRetriever()
+    retriever = QXRetriever(bi_encoder_model=args.bi_encoder)
     
     # Process and encode documents
     print("Processing and encoding documents...")
@@ -17,6 +22,9 @@ def main():
         doc_id = doc['Id']
         text = QXRetriever.remove_html_tags(doc['Text'])
         processed_documents[doc_id] = text
+    
+    # Encode documents
+    retriever.encode_documents(processed_documents)
     
     # Process queries
     processed_queries = []
