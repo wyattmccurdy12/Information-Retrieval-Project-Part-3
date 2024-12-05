@@ -17,8 +17,9 @@ class QXRetriever:
         """
         Initializes the QXRetriever instance and sets up the LLaMA model pipeline and bi-encoder.
         """
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = self.initialize_llama()
-        self.bi_encoder = SentenceTransformer(bi_encoder_model)
+        self.bi_encoder = SentenceTransformer(bi_encoder_model).to(self.device)
         self.document_embeddings = {}
 
     def initialize_llama(self):
@@ -45,7 +46,8 @@ class QXRetriever:
             documents (dict): A dictionary where keys are document IDs and values are document texts.
         """
         for doc_id, text in tqdm(documents.items(), desc="Encoding documents"):
-            self.document_embeddings[doc_id] = self.bi_encoder.encode(text, convert_to_tensor=True)
+            text_tensor = self.bi_encoder.encode(text, convert_to_tensor=True, device=self.device)
+            self.document_embeddings[doc_id] = text_tensor
 
     def retrieve_documents(self, expanded_query, documents, top_k=100):
         """
@@ -59,7 +61,7 @@ class QXRetriever:
         Returns:
             list: A list of dictionaries, each containing 'Id', 'Text', and 'Score' of documents that match the expanded query.
         """
-        query_embedding = self.bi_encoder.encode(expanded_query, convert_to_tensor=True)
+        query_embedding = self.bi_encoder.encode(expanded_query, convert_to_tensor=True, device=self.device)
         results = []
         for doc_id, doc_embedding in self.document_embeddings.items():
             score = util.pytorch_cos_sim(query_embedding, doc_embedding).item()
