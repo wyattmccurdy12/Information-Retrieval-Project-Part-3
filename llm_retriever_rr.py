@@ -6,6 +6,11 @@ from transformers import pipeline
 from sentence_transformers import SentenceTransformer, util
 import torch
 import os
+import logging
+
+# Set up logging
+logging.basicConfig(filename='rr_retriever.log', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 class RRRetriever:
 
@@ -19,6 +24,7 @@ class RRRetriever:
         self.model = self.initialize_llama()
         self.bi_encoder = SentenceTransformer(bi_encoder_model).to(self.device)
         self.document_embeddings = {}
+        logging.info("Initialized RRRetriever with bi-encoder model: %s", bi_encoder_model)
 
     def initialize_llama(self):
         """
@@ -34,6 +40,7 @@ class RRRetriever:
             device_map="auto",
             max_length=200  # Set max_length instead of max_new_tokens
         )
+        logging.info("Initialized LLaMA model pipeline with model ID: %s", self.MODEL_ID)
         return pipe
 
     def encode_documents(self, documents):
@@ -46,6 +53,7 @@ class RRRetriever:
         for doc_id, text in tqdm(documents.items(), desc="Encoding documents"):
             text_tensor = self.bi_encoder.encode(text, convert_to_tensor=True, device=self.device)
             self.document_embeddings[doc_id] = text_tensor
+        logging.info("Encoded %d documents", len(documents))
 
     def retrieve_documents(self, expanded_query, documents, top_k=100):
         """
@@ -65,6 +73,7 @@ class RRRetriever:
             score = util.pytorch_cos_sim(query_embedding, doc_embedding).item()
             results.append({'Id': doc_id, 'Text': documents[doc_id], 'Score': score})
         results = sorted(results, key=lambda x: x['Score'], reverse=True)[:top_k]
+        logging.info("Retrieved top %d documents for query: %s", top_k, expanded_query)
         return results
 
     def re_rank_documents(self, query, documents):
@@ -90,6 +99,7 @@ class RRRetriever:
 
         # Re-rank the documents based on the generated indices
         re_ranked_results = [documents[i-1] for i in re_ranked_indices if 1 <= i <= len(documents)]
+        logging.info("Re-ranked documents for query: %s", query)
         return re_ranked_results
 
     @staticmethod
@@ -105,6 +115,7 @@ class RRRetriever:
         """
         with open(filepath, 'r') as file:
             queries = json.load(file)
+        logging.info("Loaded queries from file: %s", filepath)
         return queries
 
     @staticmethod
@@ -120,6 +131,7 @@ class RRRetriever:
         """
         with open(filepath, 'r') as file:
             documents = json.load(file)
+        logging.info("Loaded documents from file: %s", filepath)
         return documents
 
     @staticmethod
@@ -139,59 +151,69 @@ class RRRetriever:
 
 def main():
     parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('-q', '--queries_file', default='topics_1.json', help='Path to the queries JSON file')
+    parser.add_argument('-d', '--documents_file', default='Answers.json', help='Path to the documents JSON file')
     parser.add_argument('-be', '--bi_encoder', default='sentence-transformers/multi-qa-mpnet-base-dot-v1', help='Bi-encoder model string')
     parser.add_argument('-o', '--output_dir', default='data/outputs/', help='Output directory for TREC-formatted results')
+    parser.add_argument('-r', '--results_name', default='trec_results.txt', help='Name of the results file')
     args = parser.parse_args()
 
-    # Load data
-    print("Loading queries...")
-    queries = RRRetriever.load_queries('data/inputs/topics_1.json')
-    print("Loading documents...")
-    documents = RRRetriever.load_documents('data/inputs/Answers.json')
-    
-    # Initialize RRRetriever
-    print("Initializing RRRetriever...")
-    retriever = RRRetriever(bi_encoder_model=args.bi_encoder)
-    
-    # Process and encode documents
-    print("Processing and encoding documents...")
-    processed_documents = {}
-    for doc in tqdm(documents, desc="Processing documents"):
-        doc_id = doc['Id']
-        text = RRRetriever.remove_html_tags(doc['Text'])
-        processed_documents[doc_id] = text
-    
-    # Encode documents
-    retriever.encode_documents(processed_documents)
-    
-    # Process queries
-    print("Processing queries...")
-    processed_queries = []
-    for query in tqdm(queries, desc="Processing queries"):
-        query_id = query['Id']
-        title = RRRetriever.remove_html_tags(query['Title'])
-        body = RRRetriever.remove_html_tags(query['Body'])
-        tags = ' '.join(query['Tags'])
-        merged_query = f"{title} {body} {tags}"
-        processed_queries.append((query_id, merged_query))
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
-    output_file = os.path.join(args.output_dir, 'trec_results.txt')
+    try:
+        # Load data
+        print("Loading queries...")
+        queries = RRRetriever.load_queries(args.queries_file)
+        print("Loading documents...")
+        documents = RRRetriever.load_documents(args.documents_file)
+        
+        # Initialize RRRetriever
+        print("Initializing RRRetriever...")
+        retriever = RRRetriever(bi_encoder_model=args.bi_encoder)
+        
+        # Process and encode documents
+        print("Processing and encoding documents...")
+        processed_documents = {}
+        for doc in tqdm(documents, desc="Processing documents"):
+            doc_id = doc['Id']
+            text = RRRetriever.remove_html_tags(doc['Text'])
+            processed_documents[doc_id] = text
+        
+        # Encode documents
+        retriever.encode_documents(processed_documents)
+        
+        # Process queries
+        print("Processing queries...")
+        processed_queries = []
+        for query in tqdm(queries, desc="Processing queries"):
+            query_id = query['Id']
+            title = RRRetriever.remove_html_tags(query['Title'])
+            body = RRRetriever.remove_html_tags(query['Body'])
+            tags = ' '.join(query['Tags'])
+            merged_query = f"{title} {body} {tags}"
+            processed_queries.append((query_id, merged_query))
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(args.output_dir, exist_ok=True)
+        output_file = os.path.join(args.output_dir, args.results_name)
 
-    # Write TREC-formatted results to file
-    with open(output_file, 'w') as f:
-        for query_id, query_text in processed_queries:
-            # Retrieve top 100 documents
-            print(f"Retrieving documents for query {query_id}...")
-            results = retriever.retrieve_documents(query_text, processed_documents, top_k=100)
-            print(f"Retrieved Documents for {query_id}:")
-            
-            # Re-rank top 10 documents using LLaMA
-            top_10_results = results[:10]
-            re_ranked_results = retriever.re_rank_documents(query_text, top_10_results)
-            for rank, result in enumerate(re_ranked_results, start=1):
-                f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
+        # Write TREC-formatted results to file
+        with open(output_file, 'w') as f:
+            for query_id, query_text in processed_queries:
+                # Retrieve top 100 documents
+                print(f"Retrieving documents for query {query_id}...")
+                results = retriever.retrieve_documents(query_text, processed_documents, top_k=100)
+                print(f"Retrieved Documents for {query_id}:")
+                
+                # Re-rank top 10 documents using LLaMA
+                top_10_results = results[:10]
+                re_ranked_results = retriever.re_rank_documents(query_text, top_10_results)
+                for rank, result in enumerate(re_ranked_results, start=1):
+                    f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
+
+        logging.info("Process completed successfully")
+
+    except Exception as e:
+        logging.error("An error occurred: %s", e)
+        print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

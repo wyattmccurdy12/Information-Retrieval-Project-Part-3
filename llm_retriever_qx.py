@@ -11,7 +11,7 @@ import os
 import logging
 
 # Set up logging
-logging.basicConfig(filename='retriever.log', level=logging.INFO, 
+logging.basicConfig(filename='qx_retriever.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 class QXRetriever:
@@ -180,6 +180,8 @@ class QXRetriever:
 
 def main():
     parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('-q', '--queries_file', default='topics_1.json', help='Path to the queries JSON file')
+    parser.add_argument('-d', '--documents_file', default='Answers.json', help='Path to the documents JSON file')
     parser.add_argument('-be', '--bi_encoder', default='sentence-transformers/multi-qa-mpnet-base-dot-v1', help='Bi-encoder model string')
     parser.add_argument('-o', '--output_dir', default='data/outputs/', help='Output directory for TREC-formatted results')
     parser.add_argument('-r', '--results_name', default='trec_results.txt', help='Name of the results file')
@@ -189,9 +191,9 @@ def main():
     try:
         # Load data
         print("Loading queries...")
-        queries = QXRetriever.load_queries('data/inputs/topics_1.json')
+        queries = QXRetriever.load_queries(f"data/inputs/{args.queries_file}")
         print("Loading documents...")
-        documents = QXRetriever.load_documents('data/inputs/Answers.json')
+        documents = QXRetriever.load_documents(f"data/inputs/{args.documents_file}")
         print("Loading qrels...")
         qrels = QXRetriever.load_qrels('data/inputs/qrel_1.tsv')
         
