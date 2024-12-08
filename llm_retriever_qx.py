@@ -128,7 +128,7 @@ class QXRetriever:
         Returns:
             list: A list of queries loaded from the JSON file.
         """
-        with open(filepath, 'r') as file)
+        with open(filepath, 'r') as file:
             queries = json.load(file)
         return queries
 
@@ -143,7 +143,7 @@ class QXRetriever:
         Returns:
             dict: A dictionary of documents loaded from the JSON file.
         """
-        with open(filepath, 'r') as file)
+        with open(filepath, 'r') as file:
             documents = json.load(file)
         return documents
 
@@ -250,7 +250,7 @@ def main():
                 results = retriever.retrieve_documents(query_text, processed_documents)
                 print(f"Retrieved Documents for {query_id}:")
                 for rank, result in enumerate(results, start=1):
-                    f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} QX\n")
+                    f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
         
         # Write expanded queries to a JSON file if the flag is set
         if args.write_expanded:
