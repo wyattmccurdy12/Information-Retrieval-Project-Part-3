@@ -3,7 +3,6 @@ import json
 import re
 import pandas as pd
 from tqdm import tqdm
-import transformers
 from transformers import pipeline
 from sentence_transformers import SentenceTransformer, util
 import torch
@@ -77,7 +76,7 @@ class QXRetriever:
         query_embedding = self.bi_encoder.encode(expanded_query, convert_to_tensor=True, device=self.device)
         results = []
         for doc_id, doc_embedding in self.document_embeddings.items():
-            score = util.pytorch_cos_sim(query_embedding, doc_embedding.to(self.device)).item()
+            score = util.pytorch_cos_sim(query_embedding, torch.tensor(doc_embedding).to(self.device)).item()
             results.append({'Id': doc_id, 'Text': documents[doc_id], 'Score': score})
         results = sorted(results, key=lambda x: x['Score'], reverse=True)[:top_k]
         return results
@@ -113,8 +112,7 @@ class QXRetriever:
             dict: The updated topic with an expanded title.
         """
         title = topic['Title']
-        text_input = f"{title}"
-        expanded_title = self.gen_with_llama(text_input)
+        expanded_title = self.gen_with_llama(title)
         topic['Title'] = expanded_title
         return topic
 
@@ -188,6 +186,10 @@ def main():
     parser.add_argument('--load-embeddings', action='store_true', default=True, help='Load document embeddings from file')
     args = parser.parse_args()
 
+    processed_query_ids = set()
+    expanded_queries_file = os.path.join(args.output_dir, f"{os.path.splitext(os.path.basename(args.queries_file))[0]}_expanded.json")
+    processed_ids_file = os.path.join(args.output_dir, f"{os.path.splitext(os.path.basename(args.queries_file))[0]}_processed_ids.json")
+
     try:
         # Load data
         print("Loading queries...")
@@ -216,35 +218,39 @@ def main():
             # Encode documents
             retriever.encode_documents(processed_documents)
         
+        # Load processed query IDs if they exist
+        if os.path.exists(processed_ids_file):
+            with open(processed_ids_file, 'r') as f:
+                processed_query_ids = set(json.load(f))
+
         # Process queries
         print("Processing queries...")
-        processed_queries = []
         expanded_queries = []
-        expanded_queries_file = os.path.join(args.output_dir, f"{os.path.splitext(os.path.basename(args.queries_file))[0]}_expanded.json")
 
         if not args.write_expanded and os.path.exists(expanded_queries_file):
             print(f"Loading expanded queries from {expanded_queries_file}...")
             with open(expanded_queries_file, 'r') as f:
                 expanded_queries = json.load(f)
-            processed_queries = [(query['Id'], query['ExpandedTitle']) for query in expanded_queries]
         else:
             with open(expanded_queries_file, 'w') as f:
                 f.write('[')  # Start of JSON array
                 first_entry = True
                 for query in tqdm(queries, desc="Processing queries"):
                     query_id = query['Id']
-                    title = QXRetriever.remove_html_tags(query['Title'])
-                    body = QXRetriever.remove_html_tags(query['Body'])
-                    tags = ' '.join(query['Tags'])
-                    merged_query = f"{title} {body} {tags}"
-                    expanded_query = retriever.expand_query_title({'Title': merged_query})
-                    processed_queries.append((query_id, expanded_query['Title']))
-                    expanded_queries.append({'Id': query_id, 'ExpandedTitle': expanded_query['Title']})
+                    if query_id in processed_query_ids:
+                        continue
+                    expanded_query = retriever.expand_query_title(query)
+                    expanded_queries.append(expanded_query)
+                    processed_query_ids.add(query_id)
                     if not first_entry:
                         f.write(',\n')
-                    json.dump({'Id': query_id, 'ExpandedTitle': expanded_query['Title']}, f, indent=4)
+                    json.dump(expanded_query, f, indent=4)
                     first_entry = False
                 f.write(']')  # End of JSON array
+
+        # Save processed query IDs
+        with open(processed_ids_file, 'w') as f:
+            json.dump(list(processed_query_ids), f)
         
         # Create output directory if it doesn't exist
         os.makedirs(args.output_dir, exist_ok=True)
@@ -252,26 +258,28 @@ def main():
 
         # Write TREC-formatted results to file
         with open(output_file, 'w') as f:
-            for query_id, query_text in processed_queries:
-                # Expand the query
-                expanded_query = retriever.expand_query(query_text)
-                print(f"Expanded Query for {query_id}: {expanded_query}")
+            for query in expanded_queries:
+                query_id = query['Id']
+                expanded_title = query['Title']
+                print(f"Expanded Query for {query_id}: {expanded_title}")
                 
                 # Retrieve documents
                 print(f"Retrieving documents for query {query_id}...")
-                results = retriever.retrieve_documents(expanded_query, processed_documents)
+                results = retriever.retrieve_documents(expanded_title, processed_documents)
                 print(f"Retrieved Documents for {query_id}:")
                 for rank, result in enumerate(results, start=1):
                     f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
         
         # Write expanded queries to a JSON file if the flag is set
         if args.write_expanded:
-            expanded_queries_file = os.path.join(args.output_dir, f"{os.path.splitext(os.path.basename(args.queries_file))[0]}_expanded.json")
             with open(expanded_queries_file, 'w') as f:
                 json.dump(expanded_queries, f, indent=4)
             print(f"Expanded queries written to {expanded_queries_file}")
 
     except Exception as e:
+        # Save processed query IDs in case of an exception
+        with open(processed_ids_file, 'w') as f:
+            json.dump(list(processed_query_ids), f)
         print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
