@@ -3,6 +3,7 @@ import json
 import re
 import pandas as pd
 from tqdm import tqdm
+import transformers
 from transformers import pipeline
 from sentence_transformers import SentenceTransformer, util
 import torch
@@ -127,7 +128,7 @@ class QXRetriever:
         Returns:
             list: A list of queries loaded from the JSON file.
         """
-        with open(filepath, 'r') as file:
+        with open(filepath, 'r') as file)
             queries = json.load(file)
         return queries
 
@@ -142,23 +143,9 @@ class QXRetriever:
         Returns:
             dict: A dictionary of documents loaded from the JSON file.
         """
-        with open(filepath, 'r') as file:
+        with open(filepath, 'r') as file)
             documents = json.load(file)
         return documents
-
-    @staticmethod
-    def load_qrels(filepath):
-        """
-        Load qrels from a TSV file.
-
-        Args:
-            filepath (str): The path to the TSV file containing qrels.
-
-        Returns:
-            DataFrame: A pandas DataFrame containing the qrels.
-        """
-        qrels = pd.read_csv(filepath, sep='\t', header=None, names=['query_id', 'doc_id', 'relevance'])
-        return qrels
 
     @staticmethod
     def remove_html_tags(text):
@@ -196,8 +183,6 @@ def main():
         queries = QXRetriever.load_queries(f"data/inputs/{args.queries_file}")
         print("Loading documents...")
         documents = QXRetriever.load_documents(f"data/inputs/{args.documents_file}")
-        print("Loading qrels...")
-        qrels = QXRetriever.load_qrels('data/inputs/qrel_1.tsv')
         
         # Initialize QXRetriever
         print("Initializing QXRetriever...")
@@ -231,6 +216,7 @@ def main():
             print(f"Loading expanded queries from {expanded_queries_file}...")
             with open(expanded_queries_file, 'r') as f:
                 expanded_queries = json.load(f)
+            processed_queries = [(query['Id'], query['Title']) for query in expanded_queries]
         else:
             with open(expanded_queries_file, 'w') as f:
                 f.write('[')  # Start of JSON array
@@ -248,9 +234,9 @@ def main():
                     first_entry = False
                 f.write(']')  # End of JSON array
 
-        # Save processed query IDs
-        with open(processed_ids_file, 'w') as f:
-            json.dump(list(processed_query_ids), f)
+            # Save processed query IDs
+            with open(processed_ids_file, 'w') as f:
+                json.dump(list(processed_query_ids), f)
         
         # Create output directory if it doesn't exist
         os.makedirs(args.output_dir, exist_ok=True)
@@ -258,17 +244,13 @@ def main():
 
         # Write TREC-formatted results to file
         with open(output_file, 'w') as f:
-            for query in expanded_queries:
-                query_id = query['Id']
-                expanded_title = query['Title']
-                print(f"Expanded Query for {query_id}: {expanded_title}")
-                
+            for query_id, query_text in processed_queries:
                 # Retrieve documents
                 print(f"Retrieving documents for query {query_id}...")
-                results = retriever.retrieve_documents(expanded_title, processed_documents)
+                results = retriever.retrieve_documents(query_text, processed_documents)
                 print(f"Retrieved Documents for {query_id}:")
                 for rank, result in enumerate(results, start=1):
-                    f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
+                    f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} QX\n")
         
         # Write expanded queries to a JSON file if the flag is set
         if args.write_expanded:
