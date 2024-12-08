@@ -9,3 +9,17 @@
 
 2024-12-07 10:49:48,273 - INFO - Use pytorch device_name: cuda
 2024-12-07 10:49:48,384 - INFO - Initialized QXRetriever with bi-encoder model: sentence-transformers/multi-qa-mpnet-base-dot-v1
+2024-12-07 12:33:18,060 - INFO - Encoded 523728 documents
+2024-12-07 12:33:19,977 - INFO - Generated expanded text for input: How can I set the Software Center to install software for non-root users? How can I set the Software Center to allow non-root users to install stuff from the Ubuntu repos without having to type in their password?I'm fully aware of the security implications, and I am willing to take the risk. Fedora 12 shipped with something like this. (By modifying the PolicyKit configuration, I believe) [ ' s o f t w a r e - c e n t e r ' ,   ' s o f t w a r e - i n s t a l l a t i o n ' ,   ' p o l i c y k i t ' ]
+2024-12-07 12:33:19,977 - ERROR - An error occurred: 'Id'
+2024-12-07 13:22:47,922 - INFO - Loaded queries from file: data/inputs/topics_1.json
+2024-12-07 13:22:52,629 - INFO - Loaded documents from file: data/inputs/Answers.json
+2024-12-07 13:22:52,645 - INFO - Loaded qrels from file: data/inputs/qrel_1.tsv
+2024-12-07 13:22:55,058 - INFO - Initialized LLaMA model pipeline with model ID: meta-llama/Llama-3.2-1B
+2024-12-07 13:22:55,058 - INFO - Load pretrained SentenceTransformer: sentence-transformers/multi-qa-mpnet-base-dot-v1
+2024-12-07 13:22:55,161 - WARNING - You try to use a model that was created with version 3.0.0.dev0, however, your version is 2.5.1. This might cause unexpected behavior or errors. In that case, try to update to the latest version.
+
+
+
+2024-12-07 13:22:55,867 - INFO - Use pytorch device_name: cuda
+2024-12-07 13:22:55,983 - INFO - Initialized QXRetriever with bi-encoder model: sentence-transformers/multi-qa-mpnet-base-dot-v1

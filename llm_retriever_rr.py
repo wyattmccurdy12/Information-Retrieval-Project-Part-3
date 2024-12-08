@@ -159,11 +159,12 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Load data
         print("Loading queries...")
-        queries = RRRetriever.load_queries(args.queries_file)
+        queries = RRRetriever.load_queries(f"data/inputs/{args.queries_file}")
         print("Loading documents...")
-        documents = RRRetriever.load_documents(args.documents_file)
+        documents = RRRetriever.load_documents(f"data/inputs/{args.documents_file}")
+        print("Loading qrels...")
+        qrels = RRRetriever.load_qrels('data/inputs/qrel_1.tsv')
         
         # Initialize RRRetriever
         print("Initializing RRRetriever...")
