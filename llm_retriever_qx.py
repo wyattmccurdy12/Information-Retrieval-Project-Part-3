@@ -164,11 +164,10 @@ class QXRetriever:
 
 def main():
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('-q', '--queries_file', default='topics_1.json', help='Path to the queries JSON file')
+    parser.add_argument('-q', '--queries_file', default='topics_2.json', help='Path to the queries JSON file')
     parser.add_argument('-d', '--documents_file', default='Answers.json', help='Path to the documents JSON file')
     parser.add_argument('-be', '--bi_encoder', default='sentence-transformers/multi-qa-mpnet-base-dot-v1', help='Bi-encoder model string')
-    parser.add_argument('-o', '--output_dir', default='data/outputs/', help='Output directory for TREC-formatted results')
-    parser.add_argument('-r', '--results_name', default='trec_results.txt', help='Name of the results file')
+    parser.add_argument('-o', '--output_dir', default='data/outputs/', help='Output directory for expanded queries')
     parser.add_argument('--write-expanded', action='store_true', default=True, help='Write expanded queries to a JSON file')
     parser.add_argument('--load-embeddings', action='store_true', default=True, help='Load document embeddings from file')
     args = parser.parse_args()
@@ -216,7 +215,6 @@ def main():
             print(f"Loading expanded queries from {expanded_queries_file}...")
             with open(expanded_queries_file, 'r') as f:
                 expanded_queries = json.load(f)
-            processed_queries = [(query['Id'], query['Title']) for query in expanded_queries]
         else:
             with open(expanded_queries_file, 'w') as f:
                 f.write('[')  # Start of JSON array
@@ -237,20 +235,6 @@ def main():
             # Save processed query IDs
             with open(processed_ids_file, 'w') as f:
                 json.dump(list(processed_query_ids), f)
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(args.output_dir, exist_ok=True)
-        output_file = os.path.join(args.output_dir, args.results_name)
-
-        # Write TREC-formatted results to file
-        with open(output_file, 'w') as f:
-            for query_id, query_text in processed_queries:
-                # Retrieve documents
-                print(f"Retrieving documents for query {query_id}...")
-                results = retriever.retrieve_documents(query_text, processed_documents)
-                print(f"Retrieved Documents for {query_id}:")
-                for rank, result in enumerate(results, start=1):
-                    f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
         
         # Write expanded queries to a JSON file if the flag is set
         if args.write_expanded:

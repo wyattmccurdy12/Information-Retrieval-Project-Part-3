@@ -23,7 +23,6 @@ cross-encoder/ms-marco-MiniLM-L-6-v2
 '''
 
 import re
-from bs4 import BeautifulSoup
 from sentence_transformers.cross_encoder import CrossEncoder
 from sentence_transformers import SentenceTransformer
 import json
@@ -120,7 +119,7 @@ def write_results_to_tsv(results, output_filename, model_type, model_status):
 
 def remove_html_tags(text):
     """
-    Remove HTML tags from the input text using BeautifulSoup.
+    Remove HTML tags from the input text using regular expressions.
 
     Parameters:
     text (str): The text from which to remove HTML tags.
@@ -128,10 +127,8 @@ def remove_html_tags(text):
     Returns:
     str: The text with HTML tags removed.
     """
-    soup = BeautifulSoup(text, "html.parser")
-    text = soup.get_text()
-    text = re.sub(r"\\", "", text)
-    return text
+    clean = re.compile('<.*?>')
+    return re.sub(clean, '', text)
 
 def main():
     """
