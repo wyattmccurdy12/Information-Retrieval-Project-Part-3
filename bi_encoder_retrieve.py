@@ -30,6 +30,7 @@ from sklearn.model_selection import train_test_split
 import argparse
 import numpy as np
 from tqdm import tqdm
+import torch
 
 class Retriever:
     """
@@ -39,19 +40,21 @@ class Retriever:
     model_type (str): The type of the model ('bi-encoder' or 'cross-encoder').
     model (SentenceTransformer or CrossEncoder): The loaded model.
     """
-    def __init__(self, model_type, model_name):
+    def __init__(self, model_type, model_name, device):
         """
         Initializes the Retriever with the specified model type and name.
 
         Parameters:
         model_type (str): The type of the model ('bi-encoder' or 'cross-encoder').
         model_name (str): The name of the model to load.
+        device (torch.device): The device to load the model on.
         """
         self.model_type = model_type
+        self.device = device
         if model_type == 'bi-encoder':
-            self.model = SentenceTransformer(model_name)
+            self.model = SentenceTransformer(model_name).to(device)
         elif model_type == 'cross-encoder':
-            self.model = CrossEncoder(model_name)
+            self.model = CrossEncoder(model_name, device=device)
         else:
             raise ValueError("Invalid model type. Choose 'bi-encoder' or 'cross-encoder'.")
 
@@ -142,7 +145,11 @@ def main():
     parser.add_argument('-be', '--bi_encoder', required=True, help='Bi-encoder model string')
     parser.add_argument('-ce', '--cross_encoder', required=True, help='Cross-encoder model string')
     parser.add_argument('-ft', '--finetuned', action='store_true', help='Indicate if the model is fine-tuned')
+    parser.add_argument('--cuda', type=int, choices=[0, 1], default=0, help='CUDA device to use (0 or 1)')
     args = parser.parse_args()
+
+    # Set the device
+    device = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
 
     # Load data
     print("Loading data...")
@@ -150,8 +157,8 @@ def main():
     print("Data loaded successfully.")
 
     # Instantiate retrievers
-    bi_encoder_retriever = Retriever('bi-encoder', args.bi_encoder)
-    cross_encoder_retriever = Retriever('cross-encoder', args.cross_encoder)
+    bi_encoder_retriever = Retriever('bi-encoder', args.bi_encoder, device)
+    cross_encoder_retriever = Retriever('cross-encoder', args.cross_encoder, device)
     
     # Process and encode queries using bi-encoder
     print("Processing and encoding queries...")
@@ -175,7 +182,12 @@ def main():
         text = remove_html_tags(doc['Text'])
         processed_documents[doc_id] = text
     
-    encoded_documents = bi_encoder_retriever.encode(list(processed_documents.values()))
+    # Add a loading bar for encoding documents
+    print("Encoding documents...")
+    encoded_documents = []
+    for doc_text in tqdm(processed_documents.values(), desc="Encoding documents"):
+        encoded_documents.append(bi_encoder_retriever.encode([doc_text])[0])
+    encoded_documents = np.array(encoded_documents)
     print("Documents processed and encoded successfully.")
     
     # Initial ranking using bi-encoder

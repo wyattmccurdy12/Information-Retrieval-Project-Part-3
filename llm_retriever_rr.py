@@ -14,7 +14,7 @@ logging.basicConfig(filename='rr_retriever.log', level=logging.INFO,
 
 class RRRetriever:
 
-    MODEL_ID = "meta-llama/Llama-3.2-1B"
+    MODEL_ID = "meta-llama/Llama-3.2-1B-Instruct"
 
     def __init__(self, bi_encoder_model='sentence-transformers/multi-qa-mpnet-base-dot-v1'):
         """
@@ -38,7 +38,6 @@ class RRRetriever:
             model=self.MODEL_ID, 
             torch_dtype=torch.bfloat16, 
             device_map="auto",
-            max_length=200  # Set max_length instead of max_new_tokens
         )
         logging.info("Initialized LLaMA model pipeline with model ID: %s", self.MODEL_ID)
         return pipe
@@ -88,13 +87,13 @@ class RRRetriever:
             list: A re-ranked list of dictionaries, each containing 'Id', 'Text', and 'Score' of documents.
         """
         # Prepare the system prompt
-        system_prompt = f"Re-rank the following documents based on their relevance to the query: '{query}'.\n\n"
-        for i, doc in enumerate(documents):
-            system_prompt += f"Document {i+1}: {doc['Text']}\n\n"
-        system_prompt += "Provide the re-ranked list of document numbers based on their relevance to the query."
+        system_prompt = [
+            {"role": "system", "content": "You excel at creating clean, well-ordered lists. In this task, please output WITH NO EXTRA TEXT a re-ordered version of the provided list. The focus in re-ranking should be relevance to the provided query. The query/document information will be provided in the format 'Query: ...query text..., Documents: ...the ten documents to be re-ranked text...'."},
+            {"role": "user", "content": f"Query: {query}, Documents: " + "\n\n".join([f"Document {i+1}: {doc['Text']}" for i, doc in enumerate(documents)])}
+        ]
 
         # Generate the re-ranked list using LLaMA
-        generated_text = self.model(system_prompt, max_length=500)[0]['generated_text']
+        generated_text = self.model(system_prompt, max_new_tokens=500)[0]['generated_text']
         re_ranked_indices = [int(s) for s in generated_text.split() if s.isdigit()]
 
         # Re-rank the documents based on the generated indices
@@ -135,6 +134,27 @@ class RRRetriever:
         return documents
 
     @staticmethod
+    def load_results(filepath):
+        """
+        Load results from a TSV file.
+
+        Args:
+            filepath (str): The path to the TSV file containing results.
+
+        Returns:
+            dict: A dictionary containing the results.
+        """
+        results = {}
+        with open(filepath, 'r') as file:
+            for line in file:
+                qid, _, docid, rank, score, _ = line.strip().split()
+                if qid not in results:
+                    results[qid] = []
+                results[qid].append((docid, int(rank), float(score)))
+        logging.info("Loaded results from file: %s", filepath)
+        return results
+
+    @staticmethod
     def remove_html_tags(text):
         """
         Remove HTML tags from a string.
@@ -153,9 +173,10 @@ def main():
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('-q', '--queries_file', default='topics_1.json', help='Path to the queries JSON file')
     parser.add_argument('-d', '--documents_file', default='Answers.json', help='Path to the documents JSON file')
+    parser.add_argument('-r', '--results_file', default='bi_encoder_results.tsv', help='Path to the results TSV file')
     parser.add_argument('-be', '--bi_encoder', default='sentence-transformers/multi-qa-mpnet-base-dot-v1', help='Bi-encoder model string')
     parser.add_argument('-o', '--output_dir', default='data/outputs/', help='Output directory for TREC-formatted results')
-    parser.add_argument('-r', '--results_name', default='trec_results.txt', help='Name of the results file')
+    parser.add_argument('-rn', '--results_name', default='trec_results.txt', help='Name of the results file')
     args = parser.parse_args()
 
     try:
@@ -163,8 +184,8 @@ def main():
         queries = RRRetriever.load_queries(f"data/inputs/{args.queries_file}")
         print("Loading documents...")
         documents = RRRetriever.load_documents(f"data/inputs/{args.documents_file}")
-        print("Loading qrels...")
-        qrels = RRRetriever.load_qrels('data/inputs/qrel_1.tsv')
+        print("Loading results...")
+        results = RRRetriever.load_results(f"data/outputs/{args.results_file}")
         
         # Initialize RRRetriever
         print("Initializing RRRetriever...")
@@ -199,14 +220,14 @@ def main():
         # Write TREC-formatted results to file
         with open(output_file, 'w') as f:
             for query_id, query_text in processed_queries:
-                # Retrieve top 100 documents
-                print(f"Retrieving documents for query {query_id}...")
-                results = retriever.retrieve_documents(query_text, processed_documents, top_k=100)
-                print(f"Retrieved Documents for {query_id}:")
+                if query_id not in results:
+                    continue
+                # Retrieve top 10 documents from the results
+                top_10_results = sorted(results[query_id], key=lambda x: x[1])[:10]
+                top_10_docs = [{'Id': doc_id, 'Text': processed_documents[doc_id], 'Score': score} for doc_id, rank, score in top_10_results]
                 
                 # Re-rank top 10 documents using LLaMA
-                top_10_results = results[:10]
-                re_ranked_results = retriever.re_rank_documents(query_text, top_10_results)
+                re_ranked_results = retriever.re_rank_documents(query_text, top_10_docs)
                 for rank, result in enumerate(re_ranked_results, start=1):
                     f.write(f"{query_id} Q0 {result['Id']} {rank} {result['Score']} STANDARD\n")
 
