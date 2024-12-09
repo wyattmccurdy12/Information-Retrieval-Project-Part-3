@@ -22,3 +22,38 @@ Query expansion involves broadening a search query by adding related terms or sy
 
 ### Query re-ranking
 Query re-ranking involves reassessing the ranking of search results to ensure that the most relevant results are presented first. This can be done using various techniques, such as considering the semantic similarity between the query and the documents, analyzing the context of the query, or incorporating user feedback. For example, if a user searches for "best pizza in New York," query re-ranking might prioritize results from highly-rated restaurants with positive reviews and photos of delicious pizzas, even if they are not ranked highly based on traditional keyword matching.
+
+
+## How to run code
+The way that I ran the code is follows: 
+I first ran `bi_encoder_retrieve.py` on the topics files in order to generate a baseline. I then ran `llm_retriever_qx.py` on the topics files to generate expanded queries files, followed by a re-run of the bi-encoder retrieve script on the expanded queries. 
+
+### Requirements
+argparse
+json
+re
+pandas
+tqdm
+transformers
+sentence-transformers
+torch
+os
+numpy
+sklearn
+pytrec_eval
+matplotlib
+
+### Sample command for query expansion
+```bash
+python llm_retriever_qx.py -q data/inputs/topics_2.json -d data/inputs/Answers.json -be sentence-transformers/multi-qa-mpnet-base-dot-v1 -o data/outputs/ --write-expanded
+```
+
+### Sample command for evaluation
+```bash
+python evaluate_results.py --results data/outputs/result_bi.tsv --qrels data/inputs/qrel_1.tsv --output data/outputs/evaluation_metrics.txt
+```
+
+### Sample command for bi-encoder ranking
+```bash
+python bi_encoder_retrieve.py -q data/inputs/topics_1.json -d data/inputs/Answers.json -be sentence-transformers/all-MiniLM-L6-v2 -ce cross-encoder/ms-marco-MiniLM-L-6-v2
+```
