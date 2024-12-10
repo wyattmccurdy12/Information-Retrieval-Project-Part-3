@@ -1,4 +1,4 @@
-''''
+'''
 Information retrieval evaluation script: 
 
 Evaluate results of an information retrieval system which outputs trec-formatted tsv files. 
